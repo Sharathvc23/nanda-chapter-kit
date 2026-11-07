@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nanda-chapter-kit"
+version = "0.1.0"
+description = "Stand up a NANDA chapter: a home network for personal agents with chartered admission, a council, a catalog on the NANDA Index, and federation — composed from the sm-* primitives."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [{ name = "Sharath VC", email = "sharath@komputix.com" }]
+keywords = ["nanda", "ai-agents", "chapter", "federation", "did-key", "a2a", "ai-catalog"]
+dependencies = [
+    "sm-org-server>=0.1.0",
+    "sm-org-agent>=0.1.0",
+    "sm-arp>=0.3.2",
+    "sm-bridge>=0.10.0",
+    "sm-parc>=0.2.3",
+    "sm-dat>=0.2.0",
+    "sm-conformance>=0.3.2",
+    "sm-oversight @ git+https://github.com/Sharathvc23/sm-oversight",
+    "fastapi>=0.110",
+    "uvicorn>=0.23",
+    "httpx>=0.24",
+    "cryptography>=42",
+    "base58>=2.1",
+    "jcs>=0.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.5"]
+
+[project.scripts]
+nanda-chapter = "nanda_chapter.cli:main"
+
+[tool.hatch.metadata]
+# sm-oversight is not on PyPI yet; pinned to its public repo until it ships.
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["nanda_chapter"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 110
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

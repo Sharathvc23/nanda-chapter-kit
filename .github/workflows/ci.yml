@@ -1,0 +1,65 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: ruff check nanda_chapter tests
+      - run: python -m pytest tests/ -q
+
+  # The kit is a NANDA chapter iff the umbrella's server conformance suite passes
+  # against it. The suite lives in the private umbrella; this job needs a
+  # read token for it (UMBRELLA_TOKEN) and is skipped on forks without one.
+  conformance:
+    runs-on: ubuntu-latest
+    needs: test
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    env:
+      CHAPTER_PORT: "7799"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Sharathvc23/Nanda_Chapter_Protocol
+          token: ${{ secrets.UMBRELLA_TOKEN }}
+          path: umbrella
+          sparse-checkout: |
+            conformance
+            vectors
+            schema
+            pyproject.toml
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -e ".[dev]" && pip install -e "umbrella[dev]"
+      - name: Boot the kit
+        env:
+          CHAPTER_HOME: ${{ runner.temp }}/chapter
+          CHAPTER_ID: TEST-kit-ci
+          CHAPTER_NAME: TEST Kit CI
+          PUBLIC_URL: http://localhost:7799
+          CHAPTER_DOMAIN: kit-ci.example.org
+          ADMISSION_MODE: open
+        run: |
+          nohup python -m uvicorn nanda_chapter.app:app_from_env --factory --port "$CHAPTER_PORT" > kit.log 2>&1 &
+          for i in $(seq 1 30); do curl -fsS "http://localhost:$CHAPTER_PORT/health" >/dev/null 2>&1 && break; sleep 1; done
+          curl -fsS "http://localhost:$CHAPTER_PORT/health"
+      - name: Server conformance
+        run: UMBRELLA=umbrella CHAPTER_URL="http://localhost:$CHAPTER_PORT" scripts/conformance.sh
+      - if: always()
+        run: tail -n 50 kit.log || true
