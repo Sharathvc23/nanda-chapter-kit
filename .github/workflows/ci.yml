@@ -32,7 +32,17 @@ jobs:
       CHAPTER_PORT: "7799"
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - name: Is the umbrella token available?
+        id: gate
+        env:
+          HAVE_TOKEN: ${{ secrets.UMBRELLA_TOKEN != '' }}
+        run: |
+          echo "run=$HAVE_TOKEN" >> "$GITHUB_OUTPUT"
+          if [ "$HAVE_TOKEN" != "true" ]; then
+            echo "::notice title=conformance skipped::Set the UMBRELLA_TOKEN secret (read access to Sharathvc23/Nanda_Chapter_Protocol) to run the server conformance suite in CI."
+          fi
+      - if: steps.gate.outputs.run == 'true'
+        uses: actions/checkout@v4
         with:
           repository: Sharathvc23/Nanda_Chapter_Protocol
           token: ${{ secrets.UMBRELLA_TOKEN }}
@@ -42,12 +52,15 @@ jobs:
             vectors
             schema
             pyproject.toml
-      - uses: actions/setup-python@v5
+      - if: steps.gate.outputs.run == 'true'
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
-      - run: pip install -e ".[dev]" && pip install -e "umbrella[dev]"
-      - name: Boot the kit
+      - if: steps.gate.outputs.run == 'true'
+        run: pip install -e ".[dev]" && pip install -e "umbrella[dev]"
+      - if: steps.gate.outputs.run == 'true'
+        name: Boot the kit
         env:
           CHAPTER_HOME: ${{ runner.temp }}/chapter
           CHAPTER_ID: TEST-kit-ci
@@ -59,7 +72,8 @@ jobs:
           nohup python -m uvicorn nanda_chapter.app:app_from_env --factory --port "$CHAPTER_PORT" > kit.log 2>&1 &
           for i in $(seq 1 30); do curl -fsS "http://localhost:$CHAPTER_PORT/health" >/dev/null 2>&1 && break; sleep 1; done
           curl -fsS "http://localhost:$CHAPTER_PORT/health"
-      - name: Server conformance
+      - if: steps.gate.outputs.run == 'true'
+        name: Server conformance
         run: UMBRELLA=umbrella CHAPTER_URL="http://localhost:$CHAPTER_PORT" scripts/conformance.sh
-      - if: always()
+      - if: always() && steps.gate.outputs.run == 'true'
         run: tail -n 50 kit.log || true
