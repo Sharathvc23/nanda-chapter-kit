@@ -31,6 +31,7 @@ from .state import PROPOSAL_KINDS, ChapterState, Proposal
 # the set is closed, like the umbrella's APPROVAL_KINDS.
 PROPOSAL_CATEGORY = {
     "member_admission": "record_filed",
+    "member_revocation": "decision_made",
     "chapter_charter": "commitment_entered",
     "peer_admission": "record_filed",
     "role_promotion": "record_filed",
@@ -58,9 +59,18 @@ class Council:
         self.state = state
         self.store = store
         self.identity = identity
-        self.reviewers = set(cfg.council_reviewers)
+        self._configured_reviewers = set(cfg.council_reviewers)
+        self._operator_revoked = set(cfg.council_revoked_reviewers)
         self.required_m = max(1, cfg.council_required_m)
         self._on_approved = on_approved
+
+    @property
+    def reviewers(self) -> set[str]:
+        """Trusted reviewers right now: configured minus revoked (operator env or state)."""
+        return self._configured_reviewers - self._operator_revoked - self.state.revoked_reviewers()
+
+    def revoke_reviewer(self, did: str, reason: str) -> None:
+        self.state.revoke_reviewer(did, reason)
 
     # ── read ──────────────────────────────────────────────────────────
     def describe(self) -> dict[str, Any]:
@@ -68,6 +78,7 @@ class Council:
             "chapter_id": self.cfg.chapter_id,
             "chapter_did": self.identity.did,
             "reviewers": sorted(self.reviewers),
+            "revoked_reviewers": sorted(self._operator_revoked | self.state.revoked_reviewers()),
             "required_m": self.required_m,
             "quorum": f"{self.required_m}-of-{len(self.reviewers)}" if self.reviewers else "no council configured",
             "kinds": list(PROPOSAL_KINDS),

@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-PROPOSAL_KINDS = ("member_admission", "chapter_charter", "peer_admission", "role_promotion")
+PROPOSAL_KINDS = ("member_admission", "member_revocation", "chapter_charter", "peer_admission", "role_promotion")
 PROPOSAL_STATUSES = ("pending", "approved", "denied", "escalated", "expired")
 
 
@@ -84,6 +84,22 @@ class ChapterState:
                     delivered_at TEXT
                 );
                 CREATE INDEX IF NOT EXISTS inbox_agent ON inbox(agent_id, delivered_at);
+                CREATE TABLE IF NOT EXISTS revoked_members (
+                    agent_id TEXT PRIMARY KEY,
+                    reason TEXT NOT NULL,
+                    via TEXT NOT NULL,
+                    revoked_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS revoked_reviewers (
+                    did TEXT PRIMARY KEY,
+                    reason TEXT NOT NULL,
+                    revoked_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS listing (
+                    agent_id TEXT PRIMARY KEY,
+                    listed INTEGER NOT NULL,
+                    set_at TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS roles (
                     agent_id TEXT PRIMARY KEY,
                     role TEXT NOT NULL,            -- member | leader | admin
@@ -201,6 +217,49 @@ class ChapterState:
                 "SELECT COUNT(*) FROM inbox WHERE agent_id=? AND delivered_at IS NULL", (agent_id,)
             ).fetchone()[0]
         )
+
+    # ── revocation ────────────────────────────────────────────────────
+    def revoke_member(self, agent_id: str, reason: str, via: str) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO revoked_members(agent_id,reason,via,revoked_at) VALUES(?,?,?,?)",
+                (agent_id, reason, via, now_iso()),
+            )
+            self._conn.execute(
+                "INSERT INTO admissions(agent_id,status,via,decided_at) VALUES(?,'denied',?,?) "
+                "ON CONFLICT(agent_id) DO UPDATE SET status='denied', via=excluded.via, decided_at=excluded.decided_at",
+                (agent_id, via, now_iso()),
+            )
+
+    def is_revoked(self, agent_id: str) -> bool:
+        return self._conn.execute("SELECT 1 FROM revoked_members WHERE agent_id=?", (agent_id,)).fetchone() is not None
+
+    def revoked_members(self) -> list[dict[str, str]]:
+        return [
+            {"agent_id": r[0], "reason": r[1], "via": r[2], "revoked_at": r[3]}
+            for r in self._conn.execute("SELECT agent_id,reason,via,revoked_at FROM revoked_members ORDER BY revoked_at")
+        ]
+
+    def revoke_reviewer(self, did: str, reason: str) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO revoked_reviewers(did,reason,revoked_at) VALUES(?,?,?)", (did, reason, now_iso())
+            )
+
+    def revoked_reviewers(self) -> set[str]:
+        return {r[0] for r in self._conn.execute("SELECT did FROM revoked_reviewers")}
+
+    # ── listing (enumeration is opt-in) ───────────────────────────────
+    def set_listed(self, agent_id: str, listed: bool) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT INTO listing(agent_id,listed,set_at) VALUES(?,?,?) ON CONFLICT(agent_id) DO UPDATE SET listed=excluded.listed, set_at=excluded.set_at",
+                (agent_id, 1 if listed else 0, now_iso()),
+            )
+
+    def listed(self, agent_id: str) -> bool | None:
+        row = self._conn.execute("SELECT listed FROM listing WHERE agent_id=?", (agent_id,)).fetchone()
+        return None if row is None else bool(row[0])
 
     # ── roles ─────────────────────────────────────────────────────────
     def role(self, agent_id: str) -> str:

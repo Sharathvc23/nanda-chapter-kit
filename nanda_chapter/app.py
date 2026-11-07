@@ -35,6 +35,8 @@ from . import __version__
 from .catalog import create_catalog_router, is_withheld
 from .config import ChapterConfig
 from .council import PROPOSAL_CATEGORY, Council, CouncilError, proposal_json
+from .join import JOIN_DOC_PATH, JOIN_TEXT, build_join_document
+from .ratelimit import RateLimitMiddleware
 from .signing import SignatureError, Verified, verify_headers
 from .state import ChapterState, Proposal
 
@@ -54,6 +56,10 @@ class AuthError(Exception):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
         self.reason = reason
+
+
+class RevokedError(Exception):
+    """A correctly signed request from a member this chapter has revoked."""
 
 
 def _drop_routes(app: FastAPI, keys: set[tuple[str, str]]) -> None:
@@ -86,14 +92,26 @@ def create_app(cfg: ChapterConfig, store: ServerStore | None = None, state: Chap
 
     # ── admission ─────────────────────────────────────────────────────
     def is_admitted(agent_id: str) -> bool:
+        """Registered, admitted under the chapter's mode, and not revoked."""
+        if state.is_revoked(agent_id):
+            return False
         if cfg.admission_mode == "open":
             return True
         a = state.admission(agent_id)
         return a is not None and a[0] == "admitted"
 
+    def is_listed(agent_id: str) -> bool:
+        """Appears in the enumerable catalog: admitted AND opted in (or default-on)."""
+        if not is_admitted(agent_id):
+            return False
+        choice = state.listed(agent_id)
+        return cfg.catalog_default_listed if choice is None else choice
+
     def on_approved(p: Proposal) -> None:
         if p.kind == "member_admission":
             state.set_admission(p.subject, "admitted", f"council:{p.id}")
+        elif p.kind == "member_revocation":
+            state.revoke_member(p.subject, p.summary or "revoked by council", f"council:{p.id}")
         elif p.kind == "role_promotion":
             state.set_role(p.subject, "leader")
         # chapter_charter / peer_admission leave a receipt; federation wiring lands with peers.
@@ -141,6 +159,20 @@ def create_app(cfg: ChapterConfig, store: ServerStore | None = None, state: Chap
             return response
 
     app.add_middleware(AdmissionHook)
+    # Outermost: runs before any body is read or any handler is resolved.
+    app.add_middleware(
+        RateLimitMiddleware,
+        register_per_min=cfg.rate_register_per_min,
+        mailbox_per_min=cfg.rate_mailbox_per_min,
+        writes_per_min=cfg.rate_writes_per_min,
+        reads_per_min=cfg.rate_reads_per_min,
+        trust_proxy_headers=cfg.trust_proxy_headers,
+    )
+    if not cfg.seed_encrypted:
+        print(
+            f"[custody] chapter seed at {cfg.home / 'seed.b64'} is PLAINTEXT (mode 0600). "
+            "Set CHAPTER_SEED_PASSPHRASE to encrypt it at rest, or supply CHAPTER_SEED from a secret store."
+        )
 
     # ── signed requests ───────────────────────────────────────────────
     async def signed(req: Request, *, tofu: bool) -> Verified:
@@ -150,6 +182,8 @@ def create_app(cfg: ChapterConfig, store: ServerStore | None = None, state: Chap
             v = verify_headers(dict(req.headers), method=req.method, url_path=path, body=raw, store=store, tofu=tofu)
         except SignatureError as e:
             raise AuthError(e.reason) from None
+        if state.is_revoked(v.agent_id):
+            raise RevokedError(v.agent_id)
         if v.bootstrapped:
             admit_or_propose(v.agent_id, v.did_key)
         return v
@@ -157,6 +191,10 @@ def create_app(cfg: ChapterConfig, store: ServerStore | None = None, state: Chap
     @app.exception_handler(AuthError)
     async def _auth_error(_: Request, exc: AuthError) -> JSONResponse:
         return JSONResponse({"error": exc.reason, "detail": exc.reason}, status_code=401)
+
+    @app.exception_handler(RevokedError)
+    async def _revoked(_: Request, exc: RevokedError) -> JSONResponse:
+        return JSONResponse({"error": "revoked", "agent_id": str(exc)}, status_code=403)
 
     @app.exception_handler(CouncilError)
     async def _council_error(_: Request, exc: CouncilError) -> JSONResponse:
@@ -176,6 +214,14 @@ def create_app(cfg: ChapterConfig, store: ServerStore | None = None, state: Chap
             "admission_mode": cfg.admission_mode,
             "council": {"reviewers": len(council.reviewers), "required_m": council.required_m, "pending": len(state.list_proposals("pending"))},
             "federation": len(cfg.known_peers),
+            "revoked": len(state.revoked_members()),
+            "seed_encrypted": cfg.seed_encrypted,
+            "rate_limits_per_min": {
+                "register": cfg.rate_register_per_min,
+                "mailbox": cfg.rate_mailbox_per_min,
+                "writes": cfg.rate_writes_per_min,
+                "reads": cfg.rate_reads_per_min,
+            },
             "kit_version": __version__,
         }
 
@@ -202,6 +248,7 @@ def create_app(cfg: ChapterConfig, store: ServerStore | None = None, state: Chap
             "a2a_url": f"{base}/a2a",
             "checkpoint": f"{base}/api/checkpoint",
             "council": f"{base}/api/council",
+            "join": f"{base}{JOIN_DOC_PATH}",
             "registries": {"nanda_index": {"locator": f"urn:air:{cfg.domain}:catalog:root"}},
             "protocol_versions": ["0.2", "0.3"],
             "conformance": f"{base}/.well-known/conformance.json",
@@ -248,6 +295,57 @@ def create_app(cfg: ChapterConfig, store: ServerStore | None = None, state: Chap
             {"id": "trust", "component": "Text", "text": f"trust: {score:g} ({tier})"},
             {"id": "mailbox", "component": "Text", "text": f"mailbox: {base}/a2a/@{m.agent_id}"},
         )
+
+    # ── the signed join document (a protocol, not prose) ──────────────
+    @app.get(JOIN_DOC_PATH)
+    def join_document() -> dict[str, Any]:
+        return build_join_document(cfg, identity, council_quorum=council.describe()["quorum"])
+
+    @app.get("/join")
+    def join_text() -> Any:
+        from starlette.responses import PlainTextResponse
+
+        return PlainTextResponse(
+            JOIN_TEXT.format(
+                name=cfg.name,
+                chapter_id=cfg.chapter_id,
+                base=base,
+                path=JOIN_DOC_PATH,
+                locator=f"urn:air:{cfg.domain}:catalog:root",
+            )
+        )
+
+    # ── listing is the member's choice (enumeration is opt-in) ────────
+    @app.post("/api/me/listing")
+    async def set_listing(req: Request) -> dict[str, Any]:
+        v = await signed(req, tofu=False)
+        import json
+
+        body = json.loads(await req.body() or b"{}")
+        listed = body.get("listed")
+        if not isinstance(listed, bool):
+            raise HTTPException(status_code=400, detail="body must be {\"listed\": true|false}")
+        state.set_listed(v.agent_id, listed)
+        return {"agent_id": v.agent_id, "listed": listed, "admitted": is_admitted(v.agent_id)}
+
+    @app.get("/api/me")
+    async def me(req: Request) -> dict[str, Any]:
+        v = await signed(req, tofu=False)
+        a = state.admission(v.agent_id)
+        return {
+            "agent_id": v.agent_id,
+            "did_key": v.did_key,
+            "admitted": is_admitted(v.agent_id),
+            "admission": {"status": a[0], "via": a[1]} if a else {"status": "admitted" if cfg.admission_mode == "open" else "unknown", "via": cfg.admission_mode},
+            "listed": is_listed(v.agent_id),
+            "role": state.role(v.agent_id),
+            "inbox_depth": state.inbox_depth(v.agent_id),
+        }
+
+    @app.get("/api/revocations")
+    def revocations() -> dict[str, Any]:
+        """Public: which ids no longer speak for this chapter. Reasons stay internal."""
+        return {"revoked": [{"agent_id": r["agent_id"], "revoked_at": r["revoked_at"]} for r in state.revoked_members()]}
 
     # ── feedback (signed mutation, both schemes) ──────────────────────
     @app.post("/api/feedback")
@@ -354,8 +452,8 @@ def create_app(cfg: ChapterConfig, store: ServerStore | None = None, state: Chap
             payload = json.loads(raw or b"{}")
         except ValueError:
             raise HTTPException(status_code=400, detail="body must be JSON") from None
-        sender = req.headers.get("x-agent-id", "anonymous")
-        if req.headers.get("x-agent-signature"):
+        sender = "anonymous"
+        if req.headers.get("x-agent-signature") or not cfg.mailbox_allow_anonymous:
             v = await signed(req, tofu=False)
             sender = v.did_key
         item = _normalise_message(payload if isinstance(payload, dict) else {"text": payload})
@@ -388,7 +486,9 @@ def create_app(cfg: ChapterConfig, store: ServerStore | None = None, state: Chap
         return {"role": "assistant", "content": {"type": "text", "text": text}, "conversation_id": (payload or {}).get("conversation_id", ""), "message_id": ""}
 
     # ── discovery surface the Index resolves to ───────────────────────
-    app.include_router(create_catalog_router(cfg, store, is_listed=is_admitted, server_did=lambda: identity.did))
+    app.include_router(
+        create_catalog_router(cfg, store, is_listed=is_listed, is_resolvable=is_admitted, server_did=lambda: identity.did)
+    )
 
     app.state.cfg = cfg
     app.state.store = store

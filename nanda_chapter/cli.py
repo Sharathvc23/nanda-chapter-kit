@@ -4,7 +4,9 @@
     nanda-chapter run
     nanda-chapter identity
     nanda-chapter index payload | register | challenge | verify | resolve
-    nanda-chapter council status | new-reviewer | propose | gesture
+    nanda-chapter council status | new-reviewer | gesture | revoke-reviewer
+    nanda-chapter join-doc <chapter-url> [--expect-did did:key:...]   # verify a chapter before joining
+    nanda-chapter revoke <agent_id> --reason "..."                      # operator revocation (local state)
 """
 
 from __future__ import annotations
@@ -103,6 +105,31 @@ def cmd_index(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_join_doc(a: argparse.Namespace) -> int:
+    import httpx
+
+    from .join import JOIN_DOC_PATH, verify_join_document
+
+    url = a.url.rstrip("/") + JOIN_DOC_PATH
+    r = httpx.get(url, timeout=15, follow_redirects=False)
+    if r.status_code != 200:
+        _out({"ok": False, "reason": f"http_{r.status_code}", "url": url})
+        return 1
+    v = verify_join_document(r.json(), expected_did=a.expect_did or None, fetched_from=a.url)
+    _out({"ok": v.ok, "reason": v.reason, "did": v.did, "public_url": v.public_url, "url": url})
+    return 0 if v.ok else 1
+
+
+def cmd_revoke(a: argparse.Namespace) -> int:
+    from .state import ChapterState
+
+    cfg = _cfg()
+    st = ChapterState(cfg.home / "chapter.sqlite")
+    st.revoke_member(a.agent_id, a.reason, "operator")
+    _out({"revoked": a.agent_id, "reason": a.reason, "via": "operator", "note": "takes effect immediately; the running chapter reads the same state file"})
+    return 0
+
+
 def cmd_council(a: argparse.Namespace) -> int:
     import httpx
 
@@ -116,6 +143,15 @@ def cmd_council(a: argparse.Namespace) -> int:
         return 0
     if a.action == "status":
         _out(httpx.get(f"{base}/api/council", timeout=15).json())
+        return 0
+    if a.action == "revoke-reviewer":
+        from .state import ChapterState
+
+        if not a.did:
+            print("--did required", file=sys.stderr)
+            return 1
+        ChapterState(cfg.home / "chapter.sqlite").revoke_reviewer(a.did, a.reason or "revoked by operator")
+        _out({"revoked_reviewer": a.did, "reason": a.reason})
         return 0
     if a.action == "gesture":
         if not a.seed:
@@ -161,7 +197,9 @@ def main(argv: list[str] | None = None) -> int:
     x.set_defaults(fn=cmd_index)
 
     c = sub.add_parser("council", help="council operations")
-    c.add_argument("action", choices=["status", "new-reviewer", "gesture"])
+    c.add_argument("action", choices=["status", "new-reviewer", "gesture", "revoke-reviewer"])
+    c.add_argument("--did", default="", help="reviewer DID (revoke-reviewer)")
+    c.add_argument("--reason", default="")
     c.add_argument("--chapter", default="", help="chapter URL (default PUBLIC_URL)")
     c.add_argument("--proposal", default="")
     c.add_argument("--decision", default="approved", choices=["approved", "denied", "escalated"])
@@ -170,6 +208,16 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--reviewers", action="append", help="reviewer DIDs named on the gesture")
     c.add_argument("--summary", default="")
     c.set_defaults(fn=cmd_council)
+
+    j = sub.add_parser("join-doc", help="fetch and verify a chapter's signed join document")
+    j.add_argument("url")
+    j.add_argument("--expect-did", default="", help="the DID the NANDA Index resolved for this chapter")
+    j.set_defaults(fn=cmd_join_doc)
+
+    v = sub.add_parser("revoke", help="operator revocation of a member (writes local chapter state)")
+    v.add_argument("agent_id")
+    v.add_argument("--reason", required=True)
+    v.set_defaults(fn=cmd_revoke)
 
     a = p.parse_args(argv)
     return int(a.fn(a))

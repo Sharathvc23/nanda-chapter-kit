@@ -98,8 +98,12 @@ def create_catalog_router(
     store: ServerStore,
     *,
     is_listed: Callable[[str], bool],
+    is_resolvable: Callable[[str], bool],
     server_did: Callable[[], str],
 ) -> APIRouter:
+    """``is_listed`` gates the enumerable catalog; ``is_resolvable`` gates exact-id
+    card lookups. A member may be resolvable by whoever already knows its id
+    without being enumerable by anyone — listing is the member's choice."""
     router = APIRouter()
     base = cfg.public_url
 
@@ -129,6 +133,7 @@ def create_catalog_router(
         return CatalogDocument(host=cfg.domain, entries=_entries())
 
     @router.get("/.well-known/agent.json")
+    @router.get("/.well-known/agent-card.json")
     def agent_card() -> dict:
         return chapter_card(cfg, server_did(), len(_listed_members()))
 
@@ -144,7 +149,7 @@ def create_catalog_router(
         if slug == cfg.chapter_id:
             return chapter_card(cfg, server_did(), len(_listed_members()))
         m = store.get_member(slug)
-        if m is None or is_withheld(slug) or not is_listed(slug):
+        if m is None or is_withheld(slug) or not is_resolvable(slug):
             raise HTTPException(status_code=404, detail="unknown agent")
         return to_a2a_card(member_facts(cfg, m), slug, cfg.domain, base).model_dump(by_alias=True)
 

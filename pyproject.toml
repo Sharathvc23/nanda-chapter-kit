@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nanda-chapter-kit"
-version = "0.1.0"
+version = "0.2.0"
 description = "Stand up a NANDA chapter: a home network for personal agents with chartered admission, a council, a catalog on the NANDA Index, and federation — composed from the sm-* primitives."
 readme = "README.md"
 license = "MIT"

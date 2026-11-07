@@ -75,6 +75,8 @@ def make_cfg(tmp_path: Path, **over) -> ChapterConfig:
         "CHAPTER_FOCUS": "testing, agents",
         "ADMISSION_MODE": "open",
         "CONTACT_EMAIL": "council@example.org",
+        # Tests assert catalog contents; production default is opt-in (off).
+        "CATALOG_DEFAULT_LISTED": "true",
     }
     env.update({k: str(v) for k, v in over.items()})
     return ChapterConfig.from_env(env)
