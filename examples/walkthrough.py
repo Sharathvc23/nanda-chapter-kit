@@ -33,7 +33,7 @@ h = httpx.Client(base_url=BASE, timeout=10)
 
 def show(step, resp, keys=None):
     try: body = resp.json()
-    except Exception: body = resp.text[:200]
+    except ValueError: body = resp.text[:200]
     if keys and isinstance(body, dict): body = {k: body.get(k) for k in keys if k in body}
     print(f"\n[{step}]  HTTP {resp.status_code}\n  {json.dumps(body, default=str)[:700]}")
 
