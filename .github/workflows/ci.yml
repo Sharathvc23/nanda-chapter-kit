@@ -18,7 +18,7 @@ jobs:
           python-version: ${{ matrix.python }}
           cache: pip
       - run: pip install -e ".[dev]"
-      - run: ruff check nanda_chapter tests
+      - run: ruff check nanda_chapter tests examples
       - run: python -m pytest tests/ -q
 
   # The kit is a NANDA chapter iff the umbrella's server conformance suite passes

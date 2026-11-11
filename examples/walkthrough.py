@@ -15,10 +15,15 @@ below quorum; a stranger rejected; two reviewers co-sign to quorum; the
 approval receipt in the public log; opt into the catalog; receive and drain
 mail; a replayed signature refused; council revocation; 403 / 404 afterwards.
 """
-import base64, json, secrets, sys, time
+import base64
+import json
+import secrets
+import sys
+import time
+
+import base58
 import httpx
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-import base58
 from sm_arp import Identity
 from sm_oversight import add_witness, build_oversight_approval
 
@@ -38,6 +43,7 @@ doc = h.get("/.well-known/nanda-chapter-join.json")
 show("0b signed join document", doc, ["signed_by","signed_at"])
 import jcs
 from sm_arp import pubkey_from_did
+
 payload = doc.json()["payload"]
 pubkey_from_did(doc.json()["signed_by"]).verify(base64.b64decode(doc.json()["signature"]), bytes(jcs.canonicalize(payload)))
 print("  signature verifies offline ✓ ; promises:", payload["promises"])
