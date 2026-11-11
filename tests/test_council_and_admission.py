@@ -101,3 +101,17 @@ def test_mailbox_store_and_forward(open_client):
     inbox = open_client.get("/api/inbox", headers=a.headers_v02("")).json()
     assert len(inbox["messages"]) == 2 and inbox["messages"][0]["sender"] == b.did_key and inbox["remaining"] == 0
     assert open_client.get("/api/inbox", headers=a.headers_v02("")).json()["messages"] == []
+
+
+def test_public_view_resolves_subject_did_for_every_member_kind(council_client, reviewers):
+    """A reviewer scopes an approval to the subject's key; the public view must name it
+    for every kind whose subject is a member — admission, revocation, promotion."""
+    a = make_agent()
+    register(council_client, a)
+    for kind in ("member_revocation", "role_promotion"):
+        body = json.dumps({"kind": kind, "subject": a.agent_id, "summary": kind})
+        r = council_client.post("/api/council/proposals", content=body, headers={**a.headers_v03("POST", "/api/council/proposals", body), "Content-Type": "application/json"})
+        pub = council_client.get(f"/api/council/proposals/{r.json()['id']}/public").json()
+        assert pub["subject_did"] == a.did_key, (kind, pub)
+    p = council_client.app.state.chapter_state.pending_for_subject("member_admission", a.agent_id)
+    assert council_client.get(f"/api/council/proposals/{p.id}/public").json()["subject_did"] == a.did_key

@@ -41,6 +41,7 @@ from .signing import SignatureError, Verified, verify_headers
 from .state import ChapterState, Proposal
 
 MAX_MESSAGE_BYTES = 16 * 1024
+AGENT_SUBJECT_KINDS = ("member_admission", "member_revocation", "role_promotion")
 REPLACED_ROUTES = {
     ("GET", "/health"),
     ("GET", "/api/version"),
@@ -407,7 +408,9 @@ def create_app(cfg: ChapterConfig, store: ServerStore | None = None, state: Chap
         p = state.get_proposal(proposal_id)
         if p is None:
             raise HTTPException(status_code=404, detail="unknown proposal")
-        m = store.get_member(p.subject) if p.kind in ("member_admission", "role_promotion") else None
+        # Every kind whose subject is a member id resolves that member's DID, so a
+        # reviewer's approval is scoped to the right key (sm-oversight needs it).
+        m = store.get_member(p.subject) if p.kind in AGENT_SUBJECT_KINDS else None
         return {
             "id": p.id,
             "kind": p.kind,

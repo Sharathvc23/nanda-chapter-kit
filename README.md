@@ -165,6 +165,15 @@ votes); peer federation with did-pinning and badge-gated admission; minting the
 chapter's own signed conformance badge; PARC admission exercised with a real
 credential; an MCP server over the member and council surfaces.
 
+## See it run
+
+`examples/walkthrough.py` drives a council-mode chapter from the outside with
+plain httpx and Ed25519, printing every response: join-document verification,
+registration, hidden-while-pending, a below-quorum vote, a rejected stranger,
+quorum, the receipt in the public log, catalog opt-in, mail in and out, a
+refused replay, and revocation. The docstring shows how to boot the chapter it
+expects.
+
 ## Development
 
 ```
