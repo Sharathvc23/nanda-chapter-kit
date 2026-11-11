@@ -155,6 +155,6 @@ def verify_headers(
 
     bootstrapped = False
     if member is None:
-        store.put_member(Member(agent_id, agent_id, "sovereign", base64.b64encode(pub).decode(), did_key))
+        store.add_member(Member(agent_id, agent_id, "sovereign", base64.b64encode(pub).decode(), did_key))
         bootstrapped = True
     return Verified(agent_id, did_key, base64.b64encode(pub).decode(), scheme, bootstrapped)

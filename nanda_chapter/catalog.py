@@ -65,18 +65,26 @@ def member_facts(cfg: ChapterConfig, m: Member) -> SmAgentFacts:
 
 
 def a2a_v1_card(card: dict, m: Member, cfg: ChapterConfig) -> dict:
-    """Lift sm-bridge's v0.2-era card to the A2A v1.0 shape the NANDA Index validates.
+    """Make sure a member card is A2A v1.0-shaped for the NANDA Index.
 
-    Adds ``supportedInterfaces``, ``securitySchemes``, ``defaultInputModes`` /
-    ``defaultOutputModes`` and gives every skill an ``id`` and ``tags``; drops the
-    retired ``authentication`` block. The legacy top-level ``url`` is kept because
-    the Index still accepts it as a fallback.
+    sm-bridge >= 0.11.0 emits v1.0 already; this only fills anything missing and
+    drops the retired ``authentication`` block, so an older sm-bridge still yields
+    a card the Index validates.
     """
     mailbox = card.get("url") or f"{cfg.public_url}/a2a/@{m.agent_id}"
+    card.pop("authentication", None)
+    card.setdefault("protocolVersion", "1.0")
+    card.setdefault("url", mailbox)
+    card.setdefault("supportedInterfaces", [{"url": mailbox, "protocolBinding": "JSONRPC", "protocolVersion": "1.0"}])
+    card.setdefault("securitySchemes", {"ed25519": {"type": "ed25519", "description": "X-Agent-* Ed25519 headers, scheme ed25519+nonce"}})
+    card.setdefault("securityRequirements", [{}, {"ed25519": []}])
+    card.setdefault("defaultInputModes", ["text/plain", "application/json"])
+    card.setdefault("defaultOutputModes", ["text/plain", "application/json"])
     skills = []
     for i, s in enumerate(card.get("skills") or []):
         skills.append(
             {
+                **s,
                 "id": s.get("id") or (s.get("name") or f"skill-{i}").lower().replace(" ", "-"),
                 "name": s.get("name") or s.get("id") or f"skill {i}",
                 "description": s.get("description") or "",
@@ -85,19 +93,7 @@ def a2a_v1_card(card: dict, m: Member, cfg: ChapterConfig) -> dict:
                 "outputModes": s.get("outputModes") or ["text/plain"],
             }
         )
-    card.pop("authentication", None)
-    card.update(
-        {
-            "protocolVersion": "1.0",
-            "url": mailbox,
-            "supportedInterfaces": [{"url": mailbox, "protocolBinding": "JSONRPC", "protocolVersion": "1.0"}],
-            "securitySchemes": {"ed25519": {"type": "httpSignature", "description": "X-Agent-* Ed25519 headers, scheme ed25519+nonce"}},
-            "securityRequirements": [{}, {"ed25519": []}],
-            "defaultInputModes": ["text/plain", "application/json"],
-            "defaultOutputModes": ["text/plain", "application/json"],
-            "skills": skills or [{"id": "chapter-member", "name": "Chapter member", "description": "Reachable through the chapter mailbox", "tags": ["chapter-member"], "inputModes": ["text/plain"], "outputModes": ["text/plain"]}],
-        }
-    )
+    card["skills"] = skills or [{"id": "chapter-member", "name": "Chapter member", "description": "Reachable through the chapter mailbox", "tags": ["chapter-member"], "inputModes": ["text/plain"], "outputModes": ["text/plain"]}]
     return card
 
 

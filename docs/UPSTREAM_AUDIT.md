@@ -1,5 +1,38 @@
 # Upstream library audit — 2026-11-11
 
+> **Resolved upstream, same day.** Every finding below was fixed in its library
+> through a reviewed, CI-green, squash-merged pull request. The kit now pins
+> those merged commits (see `pyproject.toml`) and has dropped the handlers it
+> had replaced where upstream now does the job. Status per library:
+>
+> | Library | PR | Merged | Version | Own tests |
+> |---|---|---|---|---|
+> | sm-arp | [#17](https://github.com/Sharathvc23/sm-arp/pull/17) | `f182c0c` | 0.4.0 | 179 → 244, 25 vectors |
+> | sm-org-server | [#11](https://github.com/Sharathvc23/sm-org-server/pull/11) | `e71497e` | 0.2.0 | 75 → 148; umbrella conformance 68/68 on its own |
+> | sm-org-agent | [#8](https://github.com/Sharathvc23/sm-org-agent/pull/8) | `a232c93` | 0.2.0 | 34 → 64 |
+> | sm-bridge | [#31](https://github.com/Sharathvc23/sm-bridge/pull/31) | `bbcd9f2` | 0.11.0 | 371 → 410 |
+> | sm-conformance | [#14](https://github.com/Sharathvc23/sm-conformance/pull/14) | `48e9166` | 0.4.0 | 100 → 142 |
+> | sm-oversight | [#9](https://github.com/Sharathvc23/sm-oversight/pull/9) | `a60a5dd` | 0.3.0 | 13 → 34 |
+> | sm-parc | [#5](https://github.com/Sharathvc23/sm-parc/pull/5) | `1561ae2` | 0.3.0 | 74 → 105 |
+> | sm-dat | [#10](https://github.com/Sharathvc23/sm-dat/pull/10) | `b3174b5` | 0.3.0 | 66 → 197, 60 vectors |
+>
+> Still to do by a human: publish these versions to PyPI and tag them (the kit
+> and three downstream CIs install sm-arp from its commit until 0.4.0 is
+> published); delete the merged `fix/audit-2026-11` branches, which the
+> session's proxy could not remove; re-sign the stale conformance badges in
+> sm-org-server and sm-org-agent with the runtime key.
+>
+> **What the kit dropped** after the merges: its own registration, rotation and
+> receipt-ingestion handlers (sm-org-server 0.2.0 refuses re-registration with
+> a different key, validates keys, scopes rotation nonces per agent, derives
+> DIDs server-side, and keeps the receipt log append-only); its duplicate
+> rewrite/fork detection in `ChapterStore` (only the chapter-chain genesis rule
+> remains); its clock and presenter binding for PARC (sm-parc 0.3.0 requires
+> `presenter_did` and uses a real clock; the kit's subject and cap checks stay
+> as defence in depth); and the hand-built A2A v1.0 card (sm-bridge 0.11.0
+> emits it; the kit only fills gaps). The record below is kept as written on
+> the day of the audit.
+
 The kit composes eight `sm-*` libraries. Each was audited in a clean virtualenv:
 its own test suite run, README and SPEC claims checked against code with
 file:line evidence, cryptography reviewed, the published PyPI artifact diffed

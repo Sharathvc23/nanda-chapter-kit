@@ -29,7 +29,7 @@ def test_reregistration_with_a_different_key_is_refused(open_client):
     assert open_client.get("/api/me", headers=attacker.headers_v02("")).status_code == 401
     # Same key again is idempotent, not an error.
     r = open_client.post("/api/members", json={"agent_id": victim.agent_id, "name": "renamed", "origin": "sovereign", "public_key": victim.pub_b64})
-    assert r.status_code == 200 and r.json()["idempotent"] is True
+    assert r.status_code == 200 and r.json()["registered"] is True
 
 
 # ── sm-org-server F5: garbage keys ─────────────────────────────────────

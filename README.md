@@ -155,13 +155,12 @@ nanda-chapter index resolve     # the only proof a stranger can find you
 | [`sm-dat`](https://github.com/Sharathvc23/sm-dat) | Bounded delegation from a human reviewer to their agent. |
 | [`sm-arp`](https://github.com/Sharathvc23/sm-arp) | The receipt envelope everything above signs. |
 
-These libraries were audited in November 2026; the findings, what the kit does
-about each, and what must change upstream are in
-[`docs/UPSTREAM_AUDIT.md`](docs/UPSTREAM_AUDIT.md). The short version: the
-signature cores are sound, and the kit replaces the upstream registration,
-rotation, receipt-ingestion and feedback handlers because the originals were
-exploitable, lifts sm-bridge's A2A card to v1.0, and supplies the clock and
-bindings sm-parc leaves to the caller.
+These libraries were audited in November 2026 and every finding was fixed
+upstream the same day through reviewed, merged pull requests; the record is in
+[`docs/UPSTREAM_AUDIT.md`](docs/UPSTREAM_AUDIT.md). The kit pins the merged
+commits until those versions reach PyPI, and keeps only the chapter-specific
+layer on top: admission, council, catalog listing, mailbox, revocation, and an
+admission-aware directory and feedback.
 
 The kit defines no protocol. The wire contract is the
 [NANDA Chapter Protocol](https://github.com/Sharathvc23/Nanda_Chapter_Protocol)
@@ -169,8 +168,9 @@ spec and its conformance suite; when the kit and the spec disagree, the kit is w
 
 ## Status
 
-v0.3.0. Passes the umbrella server conformance suite (see CI). PARC admission is
-now exercised end to end with a real credential. Not yet done, in order:
+v0.4.0, on the audited and fixed upstreams. Passes the umbrella server
+conformance suite (see CI). PARC admission is exercised end to end with a real
+credential. Not yet done, in order:
 `sm-dat` grant verification on council gestures (single-hop only, see the
 audit); peer federation with did-pinning and badge-gated admission; minting the
 chapter's own signed conformance badge; an MCP server over the member and

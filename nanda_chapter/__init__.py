@@ -10,4 +10,4 @@ The kit composes published primitives; it defines no protocol of its own:
 * ``sm-dat``        — bounded delegated authority a council member hands its agent.
 """
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"

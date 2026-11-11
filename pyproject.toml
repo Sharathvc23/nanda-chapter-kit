@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nanda-chapter-kit"
-version = "0.3.0"
+version = "0.4.0"
 description = "Stand up a NANDA chapter: a home network for personal agents with chartered admission, a council, a catalog on the NANDA Index, and federation — composed from the sm-* primitives."
 readme = "README.md"
 license = "MIT"
@@ -12,14 +12,15 @@ requires-python = ">=3.11"
 authors = [{ name = "Sharath VC", email = "sharath@komputix.com" }]
 keywords = ["nanda", "ai-agents", "chapter", "federation", "did-key", "a2a", "ai-catalog"]
 dependencies = [
-    "sm-org-server>=0.1.0",
-    "sm-org-agent>=0.1.0",
-    "sm-arp>=0.3.2",
-    "sm-bridge>=0.10.0",
-    "sm-parc>=0.2.3",
-    "sm-dat>=0.2.0",
-    "sm-conformance>=0.3.2",
-    "sm-oversight @ git+https://github.com/Sharathvc23/sm-oversight@52d10e6fbbeba5316841676232e778de06ff2b1b",
+    # Pinned to the merged audit fixes (2026-11-11) until these versions are on PyPI.
+    "sm-arp @ git+https://github.com/Sharathvc23/sm-arp@f182c0c07556147d57548945f1a3b00088138aad",
+    "sm-org-server @ git+https://github.com/Sharathvc23/sm-org-server@e71497e281d6deb021330300768821c8c8126e89",
+    "sm-org-agent @ git+https://github.com/Sharathvc23/sm-org-agent@a232c935c3d900bc822bb231bf0742049944f37f",
+    "sm-bridge @ git+https://github.com/Sharathvc23/sm-bridge@bbcd9f27e4605ed504dbac74fc0b9c331a0cca43",
+    "sm-conformance @ git+https://github.com/Sharathvc23/sm-conformance@48e91662ef84bde08bee065a837b4eb940f807db",
+    "sm-oversight @ git+https://github.com/Sharathvc23/sm-oversight@a60a5dd1cc786001e67eca6f2b22845b3c027b90",
+    "sm-parc @ git+https://github.com/Sharathvc23/sm-parc@1561ae23a72b318270cf39d5280c34ca61b8dfd6",
+    "sm-dat @ git+https://github.com/Sharathvc23/sm-dat@b3174b5ecada5b65dc2f555eb1858f4e83c5ab4b",
     "fastapi>=0.110",
     "uvicorn>=0.23",
     "httpx>=0.24",
@@ -35,8 +36,8 @@ dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.5"]
 nanda-chapter = "nanda_chapter.cli:main"
 
 [tool.hatch.metadata]
-# sm-oversight is not on PyPI yet; pinned to a full commit SHA (0.2.0) so a fresh install
-# cannot drift with its main branch. Bump deliberately.
+# Every sm-* dependency is pinned to the commit that merged its audit fix; switch back
+# to version ranges once those releases are published to PyPI.
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]

@@ -16,7 +16,6 @@ No LLM anywhere. The chapter is infrastructure; the members think.
 
 from __future__ import annotations
 
-import base64
 import json
 import os
 import time
@@ -27,11 +26,10 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from sm_arp import Identity, build_action, verify_receipt
-from sm_server import signing as sm_signing
 from sm_server import trust as sm_trust
 from sm_server.app import _surface
 from sm_server.app import create_app as sm_create_app
-from sm_server.store.base import Member, ServerStore
+from sm_server.store.base import ServerStore
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from . import __version__
@@ -42,16 +40,13 @@ from .join import JOIN_DOC_PATH, JOIN_TEXT, build_join_document
 from .ratelimit import RateLimitMiddleware
 from .signing import SignatureError, Verified, verify_headers
 from .state import ChapterState, Proposal
-from .store import ChapterStore, ReceiptConflict, issue_chained
+from .store import ChapterStore, issue_chained
 
 MAX_MESSAGE_BYTES = 16 * 1024
 AGENT_SUBJECT_KINDS = ("member_admission", "member_revocation", "role_promotion")
-ROTATION_WINDOW_S = 300
 REPLACED_ROUTES = {
-    ("POST", "/api/members"),
-    ("POST", "/api/members/rotate"),
-    ("POST", "/api/receipts"),
     ("GET", "/health"),
+    ("GET", "/api/member/{agent_id}/profile"),
     ("GET", "/api/version"),
     ("GET", "/api/members"),
     ("GET", "/api/federation"),
@@ -210,124 +205,6 @@ def create_app(cfg: ChapterConfig, store: ServerStore | None = None, state: Chap
     @app.exception_handler(CouncilError)
     async def _council_error(_: Request, exc: CouncilError) -> JSONResponse:
         return JSONResponse({"error": exc.detail}, status_code=exc.status)
-
-    # ── registration: TOFU that cannot be hijacked ────────────────────
-    def _decode_pubkey(raw: Any) -> bytes | None:
-        if not isinstance(raw, str) or not raw:
-            return None
-        try:
-            pub = base64.b64decode(raw, validate=True)
-        except (ValueError, TypeError):
-            return None
-        return pub if len(pub) == 32 else None
-
-    @app.post("/api/members")
-    @app.post("/api/members/", include_in_schema=False)
-    async def register(req: Request) -> JSONResponse:
-        """First contact pins the key; after that only the pinned key may re-register.
-
-        Upstream let any later POST with the same agent_id and origin overwrite the
-        stored key — an identity hijack by anyone who learns a member's id. Here a
-        differing key is 401 key_mismatch; the same key is idempotent; a key that is
-        not 32 Ed25519 bytes is 400; the did:key is derived server-side, never taken
-        from the client.
-        """
-        try:
-            body = json.loads(await req.body() or b"null")
-        except ValueError:
-            return JSONResponse({"error": "body is not valid JSON"}, status_code=400)
-        if not isinstance(body, dict):
-            return JSONResponse({"error": "body must be a JSON object"}, status_code=400)
-        agent_id, name = body.get("agent_id"), body.get("name")
-        if not isinstance(agent_id, str) or not agent_id or not isinstance(name, str) or not name:
-            return JSONResponse({"error": "agent_id and name required"}, status_code=400)
-        origin = body.get("origin")
-        if origin not in cfg.origins:
-            return JSONResponse({"error": f"invalid origin: must be one of {sorted(cfg.origins)}"}, status_code=200)
-        pub = _decode_pubkey(body.get("public_key"))
-        if pub is None:
-            return JSONResponse({"error": "public_key required: standard base64 of a 32-byte Ed25519 public key"}, status_code=400)
-        pub_b64 = base64.b64encode(pub).decode()
-        existing = store.get_member(agent_id)
-        if existing is not None:
-            if existing.origin != origin:
-                return JSONResponse({"error": "origin mismatch", "existing_origin": existing.origin}, status_code=200)
-            if existing.public_key and existing.public_key != pub_b64:
-                return JSONResponse({"error": "key_mismatch", "detail": "agent_id is already bound to a different key; rotate with the old key"}, status_code=401)
-            if existing.public_key == pub_b64:
-                return JSONResponse({"agent_id": agent_id, "registered": True, "chapter": cfg.chapter_id, "origin": origin, "idempotent": True})
-        store.put_member(Member(agent_id, name[:200], origin, pub_b64, sm_signing.derive_did_key(pub)))
-        return JSONResponse({"agent_id": agent_id, "registered": True, "chapter": cfg.chapter_id, "origin": origin})
-
-    @app.post("/api/members/rotate")
-    async def rotate(req: Request) -> JSONResponse:
-        """§4.2 rotation. Same ordered checks and error strings as upstream, with a
-        per-agent nonce scope (one member cannot burn another's nonce) and a
-        server-derived did:key (the client's claimed did is ignored)."""
-        try:
-            a_ = json.loads(await req.body() or b"null")
-        except ValueError:
-            return JSONResponse({"error": "body is not valid JSON"}, status_code=400)
-        if not isinstance(a_, dict):
-            return JSONResponse({"error": "body must be a JSON object"}, status_code=400)
-        agent_id = a_.get("agent_id")
-        member = store.get_member(agent_id) if isinstance(agent_id, str) else None
-        if member is None:
-            return JSONResponse({"error": "unknown agent — cannot rotate an unregistered key"})
-        if member.origin in cfg.nonrotatable_origins:
-            return JSONResponse({"error": f"origin '{member.origin}' may not self-rotate keys (managed identity)"})
-        if a_.get("chapter_id") != cfg.chapter_id:
-            return JSONResponse({"error": f"chapter_id mismatch (attestation is for {a_.get('chapter_id')})"})
-        ts = a_.get("timestamp")
-        try:
-            if abs(int(time.time()) - int(ts)) > ROTATION_WINDOW_S:
-                return JSONResponse({"error": f"timestamp out of window (max {ROTATION_WINDOW_S}s)"})
-        except (TypeError, ValueError):
-            return JSONResponse({"error": f"timestamp out of window (max {ROTATION_WINDOW_S}s)"})
-        new_pk_b64 = a_.get("new_public_key_b64", "")
-        if new_pk_b64 == member.public_key:
-            return JSONResponse({"error": "new public key must differ from old"})
-        new_raw = _decode_pubkey(new_pk_b64)
-        if new_raw is None:
-            return JSONResponse({"error": "new pubkey wrong length: Ed25519 needs 32 bytes, standard base64"})
-        nonce = a_.get("nonce", "")
-        if not isinstance(nonce, str) or not nonce:
-            return JSONResponse({"error": "nonce required"})
-        canonical = f"ROTATE:{a_.get('chapter_id')}:{agent_id}:{new_pk_b64}:{ts}:{nonce}"
-        old_pub = _decode_pubkey(member.public_key)
-        try:
-            sig = base64.b64decode(a_.get("signature", ""), validate=True)
-            ok = old_pub is not None and sm_signing.verify(old_pub, sig, canonical.encode())
-        except (ValueError, TypeError):
-            ok = False
-        if not ok:
-            return JSONResponse({"error": "invalid signature (old key did not sign this attestation)"})
-        if not store.consume_nonce(f"rotate:{agent_id}", nonce):
-            return JSONResponse({"error": "nonce replay"})
-        store.rotate_key(agent_id, new_pk_b64, sm_signing.derive_did_key(new_raw))
-        return JSONResponse({"agent_id": agent_id, "rotated": True, "new_public_key_b64": new_pk_b64})
-
-    @app.post("/api/receipts")
-    async def ingest_receipt(req: Request) -> JSONResponse:
-        """Verify and append one ARP receipt. The log is append-only (see store.py)."""
-        try:
-            receipt = json.loads(await req.body() or b"null")
-        except ValueError:
-            return JSONResponse({"error": "body is not valid JSON"}, status_code=400)
-        if not isinstance(receipt, dict):
-            return JSONResponse({"error": "receipt must be a JSON object"}, status_code=400)
-        prev = receipt.get("previous_receipt_hash")
-        prior = None
-        if prev and isinstance(receipt.get("issuer_did"), str) and isinstance(prev, str):
-            prior = store.get_receipt_by_chain_link(receipt["issuer_did"], prev)
-        result = verify_receipt(receipt, mode="strict", prior=prior, check_chain=bool(prev))
-        if not result.ok:
-            return JSONResponse({"error": f"{result.stage}: {result.detail}"})
-        try:
-            link = store.append_receipt(receipt)
-        except ReceiptConflict as exc:
-            return JSONResponse({"error": exc.reason, "receipt_id": exc.receipt_id}, status_code=409)
-        return JSONResponse({"accepted": True, "receipt_id": receipt["receipt_id"], "chain_link": link})
 
     # ── identity & versions ───────────────────────────────────────────
     @app.get("/health")
@@ -535,9 +412,8 @@ def create_app(cfg: ChapterConfig, store: ServerStore | None = None, state: Chap
             raise HTTPException(status_code=400, detail="credential (PARC VC) and ledger required")
         if not cfg.parc_trusted_issuers:
             raise HTTPException(status_code=403, detail="parc admission disabled: no PARC_TRUSTED_ISSUERS configured")
-        # sm-parc is a pure function with unsafe defaults (audit 2026-11): it has no
-        # clock unless given one, no presenter binding, and no inline ledger cap.
-        # The chapter supplies all three.
+        # sm-parc >= 0.3.0 binds the presenter, uses a real clock and caps the ledger
+        # itself; the chapter keeps its own checks as defence in depth.
         subject = (vc.get("credentialSubject") or {}).get("id")
         if subject != v.did_key:
             raise HTTPException(status_code=403, detail="parc rejected: credential subject is not the presenting key")
@@ -553,8 +429,7 @@ def create_app(cfg: ChapterConfig, store: ServerStore | None = None, state: Chap
             required_anchors=set(cfg.parc_required_anchors),
             max_ledger_receipts=cfg.parc_max_ledger_receipts,
         )
-        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        result = admit(vc, policy=policy, ledger=ledger, is_valid=lambda r: verify_receipt(r).ok, now=now)
+        result = admit(vc, policy=policy, presenter_did=v.did_key, ledger=ledger, is_valid=lambda r: verify_receipt(r).ok)
         if not result.ok:
             raise HTTPException(status_code=403, detail=f"parc rejected: {result.stage}: {result.detail}")
         state.set_admission(v.agent_id, "admitted", "parc")
