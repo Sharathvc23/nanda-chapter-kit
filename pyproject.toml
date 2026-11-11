@@ -19,7 +19,7 @@ dependencies = [
     "sm-parc>=0.2.3",
     "sm-dat>=0.2.0",
     "sm-conformance>=0.3.2",
-    "sm-oversight @ git+https://github.com/Sharathvc23/sm-oversight",
+    "sm-oversight @ git+https://github.com/Sharathvc23/sm-oversight@52d10e6fbbeba5316841676232e778de06ff2b1b",
     "fastapi>=0.110",
     "uvicorn>=0.23",
     "httpx>=0.24",
@@ -35,7 +35,8 @@ dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.5"]
 nanda-chapter = "nanda_chapter.cli:main"
 
 [tool.hatch.metadata]
-# sm-oversight is not on PyPI yet; pinned to its public repo until it ships.
+# sm-oversight is not on PyPI yet; pinned to a full commit SHA (0.2.0) so a fresh install
+# cannot drift with its main branch. Bump deliberately.
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
