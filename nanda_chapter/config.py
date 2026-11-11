@@ -46,6 +46,10 @@ class ChapterConfig:
     admission_mode: str = "open"
     parc_trusted_issuers: tuple[str, ...] = ()
     parc_min_score: float = 0.0
+    # Sybil defence: the presented ledger must verifiably involve one of these DIDs.
+    # Empty disables the check, which sm-parc's own SPEC says is forgeable.
+    parc_required_anchors: tuple[str, ...] = ()
+    parc_max_ledger_receipts: int = 500
     # NANDA Index v2 (api.nandaindex.org). Operator-triggered, never at startup.
     index_url: str = "https://api.nandaindex.org"
     index_email: str = ""
@@ -100,6 +104,8 @@ class ChapterConfig:
             admission_mode=mode,
             parc_trusted_issuers=_split(e.get("PARC_TRUSTED_ISSUERS")),
             parc_min_score=float(e.get("PARC_MIN_SCORE", "0")),
+            parc_required_anchors=_split(e.get("PARC_REQUIRED_ANCHORS")),
+            parc_max_ledger_receipts=int(e.get("PARC_MAX_LEDGER_RECEIPTS", "500")),
             index_url=e.get("NANDA_INDEX_URL", "https://api.nandaindex.org").rstrip("/"),
             index_email=e.get("INDEX_ACCOUNT_EMAIL", ""),
             index_password=e.get("INDEX_ACCOUNT_PASSWORD", ""),

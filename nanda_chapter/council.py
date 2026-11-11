@@ -20,7 +20,7 @@ import secrets
 from collections.abc import Callable
 from typing import Any
 
-from sm_arp import Identity, build_action, issue_receipt, verify_receipt
+from sm_arp import Identity, build_action, verify_receipt
 from sm_oversight import APPROVED, DENIED, ESCALATED, OVERSIGHT_KEY, verify_quorum
 from sm_server.store.base import ServerStore
 
@@ -101,8 +101,9 @@ class Council:
             outcome="pending",
             machine_payload={"proposal": {"id": pid, "kind": kind, "subject": subject}},
         )
-        receipt = issue_receipt(self.identity, principal_did=proposer_did, action=action)
-        self.store.append_receipt(receipt)
+        from .store import issue_chained
+
+        receipt = issue_chained(self.store, self.identity, principal_did=proposer_did, action=action)  # type: ignore[arg-type]
         return self.state.create_proposal(
             id=pid, kind=kind, subject=subject, proposer_did=proposer_did, summary=summary, receipt_id=receipt["receipt_id"]
         )

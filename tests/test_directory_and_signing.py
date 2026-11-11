@@ -67,8 +67,9 @@ def test_feedback_accepts_both_schemes_and_emits_receipt(open_client):
     assert r3.status_code == 200 and r3.json()["scheme"] == "ed25519+nonce"
     rid = r3.json()["receipt_id"]
     assert open_client.get(f"/api/receipts/{rid}").status_code == 200
+    # Feedback about yourself is recorded as a receipt but never credits trust.
     trust = open_client.get(f"/api/agents/{a.agent_id}/trust").json()
-    assert trust["score"] > 0 and len(trust["history"]) == 2
+    assert trust["score"] == 0 and trust["history"] == []
 
 
 def test_openclaw_origin_admitted_and_profile_public(open_client):

@@ -11,11 +11,11 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi.testclient import TestClient
 from sm_arp import Identity
 from sm_server.signing import derive_did_key
-from sm_server.store.sqlite import SqliteStore
 
 from nanda_chapter.app import create_app
 from nanda_chapter.config import ChapterConfig
 from nanda_chapter.state import ChapterState
+from nanda_chapter.store import ChapterStore
 
 
 @dataclass
@@ -83,7 +83,7 @@ def make_cfg(tmp_path: Path, **over) -> ChapterConfig:
 
 
 def make_client(cfg: ChapterConfig) -> TestClient:
-    app = create_app(cfg, store=SqliteStore(":memory:"), state=ChapterState(":memory:"))
+    app = create_app(cfg, store=ChapterStore(":memory:"), state=ChapterState(":memory:"))
     return TestClient(app)
 
 

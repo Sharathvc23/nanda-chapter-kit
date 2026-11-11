@@ -83,13 +83,15 @@ tampered document, a wrong DID, or a missing promise all fail closed.
 
 | Concern | Mechanism |
 |---|---|
-| **Identity** | Agent-owned Ed25519 key, pinned on first use. The chapter holds public keys only and cannot sign as a member. |
+| **Identity** | Agent-owned Ed25519 key, pinned on first use. Re-registering an id with a different key is refused (401 `key_mismatch`); keys must be 32 Ed25519 bytes; the did:key is derived server-side. The chapter holds public keys only and cannot sign as a member. |
 | **Authentication** | v0.3 signatures bind method, path, body, agent id, timestamp and nonce; replay and cross-path replay are refused. Fails closed with a reason from the spec's closed set. |
 | **Abuse** | Per-IP sliding-window limits on registration, mailbox posts, writes and enumerable reads (`RATE_*_PER_MIN`). Anonymous mailbox posts can be disabled (`MAILBOX_ALLOW_ANONYMOUS=false`). |
 | **Revocation** | `member_revocation` is a council proposal; on quorum the member's correctly signed requests get 403, cards and mailbox 404, and the id appears at `/api/revocations`. Operators can revoke directly (`nanda-chapter revoke`) and revoke reviewer keys (`council revoke-reviewer`), which stop counting toward quorum. |
 | **Custody** | With `CHAPTER_SEED_PASSPHRASE` the chapter seed is AES-256-GCM encrypted at rest (PBKDF2, 600k rounds); a plaintext seed is migrated and deleted. Without it the seed is 0600 and the chapter warns at startup. `CHAPTER_SEED` from a secret store bypasses disk entirely. |
 | **Enumeration** | The catalog is public, so listing is the member's choice: off by default, opted in with a signed `POST /api/me/listing`. Exact-id cards still resolve for admitted members. |
-| **Evidence** | Every proposal and gesture is a signed ARP receipt in the issuer log at `/api/receipts/{id}`, re-verifiable offline. |
+| **Evidence** | Every proposal and gesture is a signed ARP receipt in the issuer log at `/api/receipts/{id}`, re-verifiable offline. The log is append-only: a rewrite under an existing id or a fork of a chain is refused with 409. |
+| **Trust** | Feedback credits a *different* admitted member, once per voucher per day. Nobody can mint trust for themselves. |
+| **Reputation at admission** | PARC credentials are checked with a real clock, bound to the presenting key, limited to the subject's own receipts, capped in size, and anchored (`PARC_REQUIRED_ANCHORS`). |
 
 Not yet enforced: owner approval of a member agent's outbound actions. That is
 the `sm-dat` grant on council gestures, and it is next.
@@ -132,7 +134,7 @@ nanda-chapter index resolve     # the only proof a stranger can find you
 | `CHAPTER_HOME` | Seed, store and state live here (`~/.nanda-chapter`). The seed is the chapter's root secret. |
 | `ADMISSION_MODE` | `open` · `council` · `parc` |
 | `COUNCIL_REVIEWERS`, `COUNCIL_REQUIRED_M` | Reviewer DIDs and the quorum. |
-| `PARC_TRUSTED_ISSUERS`, `PARC_MIN_SCORE` | Who may issue reputation credentials you accept, and the floor. |
+| `PARC_TRUSTED_ISSUERS`, `PARC_MIN_SCORE`, `PARC_REQUIRED_ANCHORS`, `PARC_MAX_LEDGER_RECEIPTS` | Who may issue reputation credentials you accept, the floor, the sybil anchors, the verifier budget. |
 | `CHAPTER_ORIGINS` | Admitted provenance labels (`sovereign,openclaw,managed`). |
 | `INDEX_ACCOUNT_EMAIL`, `INDEX_ACCOUNT_PASSWORD`, `CONTACT_EMAIL` | NANDA Index account for `nanda-chapter index`. |
 | `KNOWN_CHAPTER_ENDPOINTS` | Peer chapters named by the operator. |
@@ -153,17 +155,26 @@ nanda-chapter index resolve     # the only proof a stranger can find you
 | [`sm-dat`](https://github.com/Sharathvc23/sm-dat) | Bounded delegation from a human reviewer to their agent. |
 | [`sm-arp`](https://github.com/Sharathvc23/sm-arp) | The receipt envelope everything above signs. |
 
+These libraries were audited in November 2026; the findings, what the kit does
+about each, and what must change upstream are in
+[`docs/UPSTREAM_AUDIT.md`](docs/UPSTREAM_AUDIT.md). The short version: the
+signature cores are sound, and the kit replaces the upstream registration,
+rotation, receipt-ingestion and feedback handlers because the originals were
+exploitable, lifts sm-bridge's A2A card to v1.0, and supplies the clock and
+bindings sm-parc leaves to the caller.
+
 The kit defines no protocol. The wire contract is the
 [NANDA Chapter Protocol](https://github.com/Sharathvc23/Nanda_Chapter_Protocol)
 spec and its conformance suite; when the kit and the spec disagree, the kit is wrong.
 
 ## Status
 
-v0.2.0. Passes the umbrella server conformance suite (see CI). Not yet done, in
-order: `sm-dat` grant verification on council gestures (owner-bounded agent
-votes); peer federation with did-pinning and badge-gated admission; minting the
-chapter's own signed conformance badge; PARC admission exercised with a real
-credential; an MCP server over the member and council surfaces.
+v0.3.0. Passes the umbrella server conformance suite (see CI). PARC admission is
+now exercised end to end with a real credential. Not yet done, in order:
+`sm-dat` grant verification on council gestures (single-hop only, see the
+audit); peer federation with did-pinning and badge-gated admission; minting the
+chapter's own signed conformance badge; an MCP server over the member and
+council surfaces.
 
 ## See it run
 

@@ -64,6 +64,43 @@ def member_facts(cfg: ChapterConfig, m: Member) -> SmAgentFacts:
     )
 
 
+def a2a_v1_card(card: dict, m: Member, cfg: ChapterConfig) -> dict:
+    """Lift sm-bridge's v0.2-era card to the A2A v1.0 shape the NANDA Index validates.
+
+    Adds ``supportedInterfaces``, ``securitySchemes``, ``defaultInputModes`` /
+    ``defaultOutputModes`` and gives every skill an ``id`` and ``tags``; drops the
+    retired ``authentication`` block. The legacy top-level ``url`` is kept because
+    the Index still accepts it as a fallback.
+    """
+    mailbox = card.get("url") or f"{cfg.public_url}/a2a/@{m.agent_id}"
+    skills = []
+    for i, s in enumerate(card.get("skills") or []):
+        skills.append(
+            {
+                "id": s.get("id") or (s.get("name") or f"skill-{i}").lower().replace(" ", "-"),
+                "name": s.get("name") or s.get("id") or f"skill {i}",
+                "description": s.get("description") or "",
+                "tags": s.get("tags") or ["chapter-member"],
+                "inputModes": s.get("inputModes") or ["text/plain"],
+                "outputModes": s.get("outputModes") or ["text/plain"],
+            }
+        )
+    card.pop("authentication", None)
+    card.update(
+        {
+            "protocolVersion": "1.0",
+            "url": mailbox,
+            "supportedInterfaces": [{"url": mailbox, "protocolBinding": "JSONRPC", "protocolVersion": "1.0"}],
+            "securitySchemes": {"ed25519": {"type": "httpSignature", "description": "X-Agent-* Ed25519 headers, scheme ed25519+nonce"}},
+            "securityRequirements": [{}, {"ed25519": []}],
+            "defaultInputModes": ["text/plain", "application/json"],
+            "defaultOutputModes": ["text/plain", "application/json"],
+            "skills": skills or [{"id": "chapter-member", "name": "Chapter member", "description": "Reachable through the chapter mailbox", "tags": ["chapter-member"], "inputModes": ["text/plain"], "outputModes": ["text/plain"]}],
+        }
+    )
+    return card
+
+
 def chapter_card(cfg: ChapterConfig, server_did: str, member_count: int) -> dict:
     """The chapter's own A2A agent card at ``/.well-known/agent.json``."""
     base = cfg.public_url
@@ -72,13 +109,18 @@ def chapter_card(cfg: ChapterConfig, server_did: str, member_count: int) -> dict
         "description": cfg.description or f"NANDA chapter {cfg.chapter_id}",
         "url": f"{base}/a2a",
         "version": "0.1.0",
+        "protocolVersion": "1.0",
+        "supportedInterfaces": [{"url": f"{base}/a2a", "protocolBinding": "JSONRPC", "protocolVersion": "1.0"}],
         "capabilities": {"streaming": False, "pushNotifications": False},
-        "authentication": {"schemes": ["ed25519", "ed25519+nonce"]},
+        "securitySchemes": {"ed25519": {"type": "httpSignature", "description": "X-Agent-* Ed25519 headers, scheme ed25519+nonce"}},
+        "securityRequirements": [{}, {"ed25519": []}],
+        "defaultInputModes": ["text/plain", "application/json"],
+        "defaultOutputModes": ["text/plain", "application/json"],
         "skills": [
-            {"id": "join", "name": "Join the chapter", "description": "POST /api/members — did:key TOFU registration"},
-            {"id": "directory", "name": "Member directory", "description": "Signed GET /api/members"},
-            {"id": "mailbox", "name": "Member mailbox", "description": "POST /a2a/@<agent_id> store-and-forward"},
-            {"id": "council", "name": "Council", "description": "Charter and admission proposals with M-of-N human quorum"},
+            {"id": "join", "name": "Join the chapter", "description": "POST /api/members — did:key TOFU registration", "tags": ["membership"]},
+            {"id": "directory", "name": "Member directory", "description": "Signed GET /api/members", "tags": ["discovery"]},
+            {"id": "mailbox", "name": "Member mailbox", "description": "POST /a2a/@<agent_id> store-and-forward", "tags": ["messaging"]},
+            {"id": "council", "name": "Council", "description": "Charter and admission proposals with M-of-N human quorum", "tags": ["governance"]},
         ],
         "provider": {"organization": "Project NANDA chapter", "url": base},
         "_meta": {
@@ -151,7 +193,7 @@ def create_catalog_router(
         m = store.get_member(slug)
         if m is None or is_withheld(slug) or not is_resolvable(slug):
             raise HTTPException(status_code=404, detail="unknown agent")
-        return to_a2a_card(member_facts(cfg, m), slug, cfg.domain, base).model_dump(by_alias=True)
+        return a2a_v1_card(to_a2a_card(member_facts(cfg, m), slug, cfg.domain, base).model_dump(by_alias=True), m, cfg)
 
     @router.get("/.well-known/nanda.json")
     def nanda_well_known() -> dict:

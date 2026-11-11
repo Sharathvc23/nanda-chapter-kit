@@ -120,7 +120,12 @@ def verify_headers(
 
     member = store.get_member(agent_id)
     if member is not None:
-        stored_pub = base64.b64decode(member.public_key)
+        try:
+            stored_pub = base64.b64decode(member.public_key or "", validate=True)
+        except (ValueError, TypeError):
+            stored_pub = b""
+        if len(stored_pub) != 32:
+            raise SignatureError("no_stored_key")
         if claimed_pub and claimed_pub != stored_pub:
             raise SignatureError("key_mismatch")
         pub = stored_pub
