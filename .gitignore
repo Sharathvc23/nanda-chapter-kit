@@ -8,4 +8,6 @@ build/
 .nanda-chapter/
 *.sqlite
 *.sqlite3
+*.sqlite-shm
+*.sqlite-wal
 .env

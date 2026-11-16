@@ -27,8 +27,15 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from sm_arp import Identity, build_action, verify_receipt
 from sm_server import trust as sm_trust
-from sm_server.app import _surface
-from sm_server.app import create_app as sm_create_app
+
+# sm-org-server builds a module-level ``app`` when imported, and since 0.2.0 its
+# default store is file-backed, so a bare import would drop ``sm-server.sqlite``
+# into the current directory. The chapter always passes its own store; keep the
+# import-time instance in memory.
+os.environ.setdefault("SERVER_DB_PATH", ":memory:")
+
+from sm_server.app import _surface  # noqa: E402
+from sm_server.app import create_app as sm_create_app  # noqa: E402
 from sm_server.store.base import ServerStore
 from starlette.middleware.base import BaseHTTPMiddleware
 
