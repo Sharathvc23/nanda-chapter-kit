@@ -16,11 +16,19 @@
 > | sm-parc | [#5](https://github.com/Sharathvc23/sm-parc/pull/5) | `1561ae2` | 0.3.0 | 74 → 105 |
 > | sm-dat | [#10](https://github.com/Sharathvc23/sm-dat/pull/10) | `b3174b5` | 0.3.0 | 66 → 197, 60 vectors |
 >
-> Still to do by a human: publish these versions to PyPI and tag them (the kit
-> and three downstream CIs install sm-arp from its commit until 0.4.0 is
-> published); delete the merged `fix/audit-2026-11` branches, which the
+> **Published 2026-11-17.** Seven of the eight are on PyPI and tagged, and the
+> kit now depends on them by version range: sm-arp 0.4.0, sm-org-server 0.2.0,
+> sm-org-agent 0.2.0, sm-bridge 0.11.0, sm-conformance 0.4.0, sm-parc 0.3.0,
+> sm-dat 0.3.0. Each repo's release workflow gained a guarded manual trigger
+> that checks the version, publishes, then tags.
+>
+> Still to do by a human: register sm-oversight's trusted publisher on PyPI so
+> 0.3.0 can be released (the kit pins its merged commit until then); delete the
+> merged `fix/audit-2026-11` and `ci/release-dispatch` branches, which the
 > session's proxy could not remove; re-sign the stale conformance badges in
-> sm-org-server and sm-org-agent with the runtime key.
+> sm-org-server and sm-org-agent with the runtime key; drop the git install of
+> sm-arp from the sm-oversight, sm-parc and sm-dat CI workflows now that 0.4.0
+> is on PyPI.
 >
 > **What the kit dropped** after the merges: its own registration, rotation and
 > receipt-ingestion handlers (sm-org-server 0.2.0 refuses re-registration with

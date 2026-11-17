@@ -157,9 +157,9 @@ nanda-chapter index resolve     # the only proof a stranger can find you
 
 These libraries were audited in November 2026 and every finding was fixed
 upstream the same day through reviewed, merged pull requests; the record is in
-[`docs/UPSTREAM_AUDIT.md`](docs/UPSTREAM_AUDIT.md). The kit pins the merged
-commits until those versions reach PyPI, and keeps only the chapter-specific
-layer on top: admission, council, catalog listing, mailbox, revocation, and an
+[`docs/UPSTREAM_AUDIT.md`](docs/UPSTREAM_AUDIT.md). The kit depends on the
+published versions (sm-oversight by commit until it reaches PyPI), and keeps
+only the chapter-specific layer on top: admission, council, catalog listing, mailbox, revocation, and an
 admission-aware directory and feedback.
 
 The kit defines no protocol. The wire contract is the

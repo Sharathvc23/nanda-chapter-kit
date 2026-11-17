@@ -12,15 +12,17 @@ requires-python = ">=3.11"
 authors = [{ name = "Sharath VC", email = "sharath@komputix.com" }]
 keywords = ["nanda", "ai-agents", "chapter", "federation", "did-key", "a2a", "ai-catalog"]
 dependencies = [
-    # Pinned to the merged audit fixes (2026-11-11) until these versions are on PyPI.
-    "sm-arp @ git+https://github.com/Sharathvc23/sm-arp@f182c0c07556147d57548945f1a3b00088138aad",
-    "sm-org-server @ git+https://github.com/Sharathvc23/sm-org-server@e71497e281d6deb021330300768821c8c8126e89",
-    "sm-org-agent @ git+https://github.com/Sharathvc23/sm-org-agent@a232c935c3d900bc822bb231bf0742049944f37f",
-    "sm-bridge @ git+https://github.com/Sharathvc23/sm-bridge@bbcd9f27e4605ed504dbac74fc0b9c331a0cca43",
-    "sm-conformance @ git+https://github.com/Sharathvc23/sm-conformance@48e91662ef84bde08bee065a837b4eb940f807db",
+    # Audit 2026-11 fixed versions, published to PyPI.
+    "sm-arp>=0.4.0,<0.5",
+    "sm-org-server>=0.2.0,<0.3",
+    "sm-org-agent>=0.2.0,<0.3",
+    "sm-bridge>=0.11.0,<0.12",
+    "sm-conformance>=0.4.0,<0.5",
+    "sm-parc>=0.3.0,<0.4",
+    "sm-dat>=0.3.0,<0.4",
+    # Not on PyPI yet (trusted publisher pending); pinned to the commit that
+    # merged its audit fix. Switch to "sm-oversight>=0.3.0,<0.4" once published.
     "sm-oversight @ git+https://github.com/Sharathvc23/sm-oversight@a60a5dd1cc786001e67eca6f2b22845b3c027b90",
-    "sm-parc @ git+https://github.com/Sharathvc23/sm-parc@1561ae23a72b318270cf39d5280c34ca61b8dfd6",
-    "sm-dat @ git+https://github.com/Sharathvc23/sm-dat@b3174b5ecada5b65dc2f555eb1858f4e83c5ab4b",
     "fastapi>=0.110",
     "uvicorn>=0.23",
     "httpx>=0.24",
@@ -36,8 +38,7 @@ dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.5"]
 nanda-chapter = "nanda_chapter.cli:main"
 
 [tool.hatch.metadata]
-# Every sm-* dependency is pinned to the commit that merged its audit fix; switch back
-# to version ranges once those releases are published to PyPI.
+# sm-oversight is the one git dependency left (see the dependencies comment).
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
